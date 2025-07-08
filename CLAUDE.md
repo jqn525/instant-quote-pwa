@@ -39,6 +39,8 @@ The application uses Vite with PWA plugin for fast development and optimized pro
 
 **Testing the PWA**: After building, serve the `dist/` folder to test PWA features like offline functionality and installability. The preview command serves the production build with proper HTTPS simulation for PWA testing.
 
+**GitHub Pages Deployment**: Production build files are copied to repository root for GitHub Pages hosting. The built assets from `dist/` are committed to the main branch, allowing direct serving from root. Live app: https://jqn525.github.io/instant-quote-pwa/
+
 **Testing & Code Quality**: No automated testing framework currently configured. Manual testing focuses on PWA functionality, pricing calculations, and cross-browser compatibility. No linting tools configured - code follows vanilla JavaScript patterns with consistent formatting.
 
 ## System Architecture
@@ -166,6 +168,33 @@ The application uses Vite with PWA plugin for fast development and optimized pro
 - Installable app experience with app shortcuts for "New Quote"
 - Offline functionality for static assets and cached quotes
 
+## Settings Management System (2025)
+
+**Real-time Parameter Control**: Complete settings management system allowing manual adjustment of all pricing parameters with live calculator updates.
+
+**Architecture Components**:
+- `SettingsService.js` - Centralized parameter management with localStorage persistence and event-driven updates
+- `HamburgerMenu.js` - Animated 3-line to X menu component with toggle functionality 
+- `SettingsPanel.js` - Tabbed modal interface with form validation and export/import capabilities
+- Enhanced `PricingEngine.js` - Dynamic settings integration with fallback mechanisms
+
+**Settings Organization**:
+- **Overview Tab**: Read-only display of all current parameter values
+- **Formula Parameters Tab**: Core pricing formula components (setup fees, production rates, volume exponents, minimum order)
+- **Costs & Materials Tab**: Finishing costs, paper costs, click cost with per-piece calculations
+- **Actions Tab**: Export/import settings, reset to defaults, backup/restore functionality
+
+**Parameter Management**:
+- All pricing formula components editable: S (setup fees), k (production rates), e (volume exponents), v components (paper/click costs), Ff (finishing costs)
+- Real-time validation with min/max ranges and visual error feedback
+- Automatic localStorage persistence with 'instant-quote-settings' key
+- Event-driven updates trigger immediate pricing recalculation throughout the app
+
+**Integration Pattern**: 
+- `PricingEngine` constructor accepts optional `settingsService` parameter with graceful fallback
+- Settings changes dispatch `settingsChanged` events that trigger `app.updateCalculation()`
+- All existing functionality preserved - settings system is additive, not replacing core logic
+
 ## Recent System Changes
 
 **Per-Piece Finishing Model (2025)**: Complete transition from flat fee finishing to per-piece model
@@ -244,12 +273,19 @@ The application uses Vite with PWA plugin for fast development and optimized pro
 - Auto-selection should use setTimeout(100ms) to ensure DOM readiness
 - Maintain user customization capabilities alongside automatic defaults
 
-**Pricing Modifications**: All pricing changes should be made in `PricingEngine.js`. The C(Q) = S + Q^e × k + Q × v + Ff formula is used throughout the system:
-- Modify `products.js` for setup fees, production rate (k=1.50), exponent values, and imposition values
-- Update `paperStocks.js` for paper costs and click cost ($0.10) that affect variable cost (v)
-- Variable cost includes 50% markup: v = (paper + clicks) × 1.5 / imposition
-- Finishing options use per-piece costs multiplied by quantity: Ff = (sum of per-piece costs) × Q
-- Pricing automatically recalculates when any component triggers state change
+**Pricing Modifications**: The system now supports both static (code-based) and dynamic (settings-based) pricing modifications:
+
+**Static Changes** (requires code modification):
+- Modify `products.js` for default setup fees, production rate (k=1.50), exponent values, and imposition values
+- Update `paperStocks.js` for default paper costs and click cost ($0.10) that affect variable cost (v)
+- These become the fallback values when SettingsService is not available
+
+**Dynamic Changes** (runtime via SettingsService):
+- All pricing parameters are now user-editable through the hamburger menu → settings panel
+- Changes persist in localStorage and override static defaults automatically
+- `SettingsService.updateSetting(key, value, subKey)` for programmatic updates
+- Real-time updates: parameter changes → `settingsChanged` event → `app.updateCalculation()`
+- Formula: C(Q) = S + Q^e × k + Q × v + Ff where all components are now dynamic
 
 **Cart Operations**: Cart uses event-driven updates with `CartService.dispatchCartUpdate()`. Always preserve paper data in cart items for accurate repricing.
 
