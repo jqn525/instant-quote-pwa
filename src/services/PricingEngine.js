@@ -1,10 +1,32 @@
 import { defaultSettings } from '../data/products.js';
 import { CLICK_COST } from '../data/paperStocks.js';
+import { CACHE_CONFIG, PRICING_CONSTANTS, ERROR_TYPES } from '../utils/constants.js';
+import { formatNumber, formatCurrency, memoize } from '../utils/helpers.js';
+import { errorHandler } from '../utils/errorHandler.js';
+import { ExternalPricingEngine } from './ExternalPricingEngine.js';
 
 export class PricingEngine {
   constructor(settingsService = null) {
     this.settingsService = settingsService;
     this.settings = defaultSettings;
+    
+    // Initialize external pricing engine for interpolation-based products
+    this.externalPricingEngine = new ExternalPricingEngine();
+    
+    // Pricing calculation cache for performance
+    this.pricingCache = new Map();
+    this.cacheMaxSize = CACHE_CONFIG.pricingCache.maxSize;
+    
+    // Memoization cache for expensive Math.pow operations
+    this.mathPowCache = new Map();
+    this.mathPowCacheMaxSize = CACHE_CONFIG.mathCache.maxSize;
+    
+    // Listen to settings changes to clear cache
+    if (this.settingsService && this.settingsService.addEventListener) {
+      this.settingsService.addEventListener('settingsChanged', () => {
+        this.clearCache();
+      });
+    }
     
     // Authoritative imposition lookup table based on standard sizes
     this.impositionLookup = {
@@ -22,6 +44,120 @@ export class PricingEngine {
       '11x17': 1, '11"x17"': 1,
       '12x18': 1, '12"x18"': 1
     };
+  }
+
+  /**
+   * Get empty pricing result for error cases
+   * @returns {Object} Empty pricing result
+   */
+  getEmptyPricingResult() {
+    return {
+      setupFee: 0,
+      unitPrice: 0,
+      subtotal: 0,
+      tax: 0,
+      total: 0,
+      breakdown: {
+        setupFee: 0,
+        productionCost: 0,
+        materialsCost: 0,
+        finishingCost: 0,
+        optionModifiers: [],
+        finishingOptions: [],
+        variableCostPerPiece: 0,
+        minimumApplied: false
+      }
+    };
+  }
+
+  /**
+   * Generate cache key for pricing calculations
+   * @param {Object} product - Product object
+   * @param {Object} size - Size object  
+   * @param {Array} options - Options array
+   * @param {number} quantity - Quantity
+   * @param {Object} paper - Paper object
+   * @returns {string} Cache key
+   */
+  generateCacheKey(product, size, options, quantity, paper) {
+    const productKey = product?.name || 'unknown';
+    const sizeKey = size?.name || 'unknown';
+    const optionsKey = options?.map(opt => opt.key || opt.name).sort().join(',') || 'none';
+    const paperKey = paper?.id || 'default';
+    const settingsHash = this.getSettingsHash();
+    
+    return `${productKey}:${sizeKey}:${optionsKey}:${quantity}:${paperKey}:${settingsHash}`;
+  }
+
+  /**
+   * Generate hash of current settings to invalidate cache when settings change
+   * @returns {string} Settings hash
+   */
+  getSettingsHash() {
+    const settings = this.getEffectiveSettings();
+    // Create a simple hash of key settings that affect pricing
+    const keyData = `${settings.minimumOrder}:${JSON.stringify(settings.setupFees)}:${JSON.stringify(settings.volumeExponents)}`;
+    return keyData.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10);
+  }
+
+  /**
+   * Get cached pricing result or null if not cached
+   * @param {string} cacheKey - Cache key
+   * @returns {Object|null} Cached result or null
+   */
+  getCachedPrice(cacheKey) {
+    return this.pricingCache.get(cacheKey) || null;
+  }
+
+  /**
+   * Cache pricing result with size limit management
+   * @param {string} cacheKey - Cache key
+   * @param {Object} result - Pricing result to cache
+   */
+  setCachedPrice(cacheKey, result) {
+    // Implement LRU-like behavior by clearing oldest entries when cache is full
+    if (this.pricingCache.size >= this.cacheMaxSize) {
+      const firstKey = this.pricingCache.keys().next().value;
+      this.pricingCache.delete(firstKey);
+    }
+    this.pricingCache.set(cacheKey, result);
+  }
+
+  /**
+   * Clear pricing cache (useful when settings change)
+   */
+  clearCache() {
+    this.pricingCache.clear();
+    this.mathPowCache.clear();
+    // Clear external pricing engine cache as well
+    if (this.externalPricingEngine) {
+      this.externalPricingEngine.clearCache();
+    }
+  }
+
+  /**
+   * Memoized Math.pow for performance optimization
+   * @param {number} base - Base number
+   * @param {number} exponent - Exponent
+   * @returns {number} Result of base^exponent
+   */
+  memoizedPow(base, exponent) {
+    const key = `${base}^${exponent}`;
+    
+    if (this.mathPowCache.has(key)) {
+      return this.mathPowCache.get(key);
+    }
+    
+    const result = Math.pow(base, exponent);
+    
+    // Implement LRU-like behavior for math cache
+    if (this.mathPowCache.size >= this.mathPowCacheMaxSize) {
+      const firstKey = this.mathPowCache.keys().next().value;
+      this.mathPowCache.delete(firstKey);
+    }
+    
+    this.mathPowCache.set(key, result);
+    return result;
   }
 
   /**
@@ -46,6 +182,9 @@ export class PricingEngine {
     }
     // Fallback: update local settings
     this.settings = { ...this.settings, ...newSettings };
+    
+    // Clear cache when settings change
+    this.clearCache();
   }
 
   /**
@@ -92,8 +231,19 @@ export class PricingEngine {
     
     const { setupFee, overhead, variableCost } = pricing;
     
-    // Calculate production scaling: Q^e × k
-    const productionCost = Math.pow(quantity, overhead.e) * overhead.k;
+    // Calculate production scaling: Q^e × k (using memoized pow for performance)
+    // Add safety check for overhead
+    if (!overhead || typeof overhead.e !== 'number' || typeof overhead.k !== 'number') {
+      console.warn('Invalid overhead data in pricing calculation', { overhead, pricing });
+      return {
+        setupFee: setupFee || 0,
+        productionCost: 0,
+        materialsCost: variableCost ? quantity * variableCost : 0,
+        totalCost: (setupFee || 0) + (variableCost ? quantity * variableCost : 0)
+      };
+    }
+    
+    const productionCost = this.memoizedPow(quantity, overhead.e) * overhead.k;
     
     // Calculate variable materials: Q × v
     const materialsCost = quantity * variableCost;
@@ -152,24 +302,45 @@ export class PricingEngine {
    * @param {Object} paper - Selected paper (optional)
    * @returns {Object} Complete pricing breakdown
    */
-  calculatePrice(product, size, options, quantity, paper = null) {
-    if (!product || !product.pricing || quantity <= 0) {
-      return {
-        setupFee: 0,
-        unitPrice: 0,
-        subtotal: 0,
-        tax: 0,
-        total: 0,
-        breakdown: {
-          setupFee: 0,
-          baseUnitCost: 0,
-          sizeModifier: 1,
-          optionModifiers: [],
-          finalUnitPrice: 0,
-          overheadPerPiece: 0,
-          variableCost: 0
+  async calculatePrice(product, size, options, quantity, paper = null) {
+    try {
+      // Input validation with detailed error context
+      if (!product || !product.pricing) {
+        errorHandler.handleError({
+          type: ERROR_TYPES.VALIDATION,
+          message: 'Invalid product provided to calculatePrice',
+          context: { product: product?.name || 'undefined' }
+        }, { component: 'PricingEngine', severity: 'warning', suppressNotification: true });
+        
+        return this.getEmptyPricingResult();
+      }
+
+      if (!quantity || quantity <= 0) {
+        errorHandler.handleError({
+          type: ERROR_TYPES.VALIDATION,
+          message: 'Invalid quantity provided to calculatePrice',
+          context: { quantity, product: product.name }
+        }, { component: 'PricingEngine', severity: 'warning', suppressNotification: true });
+        
+        return this.getEmptyPricingResult();
+      }
+
+      // Route external products to external pricing engine
+      if (product.isExternal || product.pricing.type === 'interpolation') {
+        // Map size name to size key for external products
+        let sizeKey = size?.key || size?.name;
+        // Convert format like '2" x 2"' to '2X2'
+        if (sizeKey && sizeKey.includes('"')) {
+          sizeKey = sizeKey.replace(/"/g, '').replace(/\s*[x×]\s*/i, 'X');
         }
-      };
+        return this.externalPricingEngine.calculatePrice(product, sizeKey, quantity);
+      }
+
+    // Check cache first for performance
+    const cacheKey = this.generateCacheKey(product, size, options, quantity, paper);
+    const cachedResult = this.getCachedPrice(cacheKey);
+    if (cachedResult) {
+      return cachedResult;
     }
 
     // Get effective settings (either from settingsService or defaults)
@@ -182,10 +353,10 @@ export class PricingEngine {
     if (currentSettings.setupFees && currentSettings.setupFees[product.key]) {
       effectivePricing.setupFee = currentSettings.setupFees[product.key];
     }
-    if (currentSettings.productionRates && currentSettings.productionRates[product.key]) {
+    if (currentSettings.productionRates && currentSettings.productionRates[product.key] && effectivePricing.overhead) {
       effectivePricing.overhead.k = currentSettings.productionRates[product.key];
     }
-    if (currentSettings.volumeExponents && currentSettings.volumeExponents[product.key]) {
+    if (currentSettings.volumeExponents && currentSettings.volumeExponents[product.key] && effectivePricing.overhead) {
       effectivePricing.overhead.e = currentSettings.volumeExponents[product.key];
     }
     
@@ -244,7 +415,7 @@ export class PricingEngine {
     const minimumApplied = total < effectiveMinimumOrder;
     const finalTotal = Math.max(total, effectiveMinimumOrder);
     
-    return {
+    const result = {
       setupFee: Math.round(setupFee * 100) / 100,
       unitPrice: Math.round(unitPrice * 100) / 100,
       subtotal: Math.round(subtotal * 100) / 100,
@@ -267,6 +438,37 @@ export class PricingEngine {
         minimumApplied: minimumApplied
       }
     };
+
+      // Cache the result for performance
+      this.setCachedPrice(cacheKey, result);
+      
+      return result;
+
+    } catch (error) {
+      // Handle calculation errors gracefully
+      errorHandler.handleError({
+        type: ERROR_TYPES.CALCULATION,
+        message: `Pricing calculation failed: ${error.message}`,
+        stack: error.stack,
+        context: {
+          product: product?.name,
+          size: size?.name,
+          quantity,
+          paperType: paper?.type
+        }
+      }, {
+        component: 'PricingEngine',
+        severity: 'error',
+        userMessage: 'Price calculation failed. Please try again or contact support.',
+        recoveryAction: () => {
+          // Return safe default pricing
+          return this.getEmptyPricingResult();
+        }
+      });
+
+      // Return safe default result
+      return this.getEmptyPricingResult();
+    }
   }
 
   /**
@@ -275,10 +477,17 @@ export class PricingEngine {
    * @returns {string} Formatted price string
    */
   formatPrice(price) {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(price);
+    try {
+      return formatCurrency(price);
+    } catch (error) {
+      errorHandler.handleError({
+        type: ERROR_TYPES.COMPONENT,
+        message: 'Price formatting failed',
+        context: { price }
+      }, { component: 'PricingEngine', severity: 'warning', suppressNotification: true });
+      
+      return '$0.00';
+    }
   }
 
   /**

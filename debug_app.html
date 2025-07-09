@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug App</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .debug-info { background: #f0f0f0; padding: 10px; margin: 10px 0; border: 1px solid #ccc; }
+        .error { background: #ffebee; border-color: #f44336; }
+        .success { background: #e8f5e9; border-color: #4caf50; }
+    </style>
+</head>
+<body>
+    <h1>Debug Information</h1>
+    <div id="debug-output"></div>
+    <script type="module">
+        const debugOutput = document.getElementById('debug-output');
+        
+        function addDebugInfo(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `debug-info ${type}`;
+            div.textContent = message;
+            debugOutput.appendChild(div);
+        }
+        
+        // Test module imports
+        try {
+            addDebugInfo('Testing module imports...', 'info');
+            
+            // Test products import
+            import('./src/data/products.js').then(({ productTypes }) => {
+                addDebugInfo('✓ Products loaded successfully', 'success');
+                addDebugInfo(`Found ${Object.keys(productTypes).length} products: ${Object.keys(productTypes).join(', ')}`, 'info');
+                
+                // Test ProductSelector import
+                import('./src/components/ProductSelector.js').then(({ ProductSelector }) => {
+                    addDebugInfo('✓ ProductSelector loaded successfully', 'success');
+                    
+                    // Test creating a simple div
+                    const testContainer = document.createElement('div');
+                    testContainer.id = 'test-container';
+                    document.body.appendChild(testContainer);
+                    
+                    // Test ProductSelector initialization
+                    try {
+                        const productSelector = new ProductSelector(testContainer, productTypes, (product) => {
+                            addDebugInfo(`Product selected: ${product.name}`, 'success');
+                        });
+                        addDebugInfo('✓ ProductSelector initialized successfully', 'success');
+                        addDebugInfo(`Container has ${testContainer.children.length} child elements`, 'info');
+                    } catch (error) {
+                        addDebugInfo(`✗ ProductSelector initialization failed: ${error.message}`, 'error');
+                    }
+                }).catch(error => {
+                    addDebugInfo(`✗ ProductSelector import failed: ${error.message}`, 'error');
+                });
+            }).catch(error => {
+                addDebugInfo(`✗ Products import failed: ${error.message}`, 'error');
+            });
+        } catch (error) {
+            addDebugInfo(`✗ General error: ${error.message}`, 'error');
+        }
+    </script>
+</body>
+</html>

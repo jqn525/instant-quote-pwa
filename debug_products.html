@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Products</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .product-category { margin: 20px 0; padding: 20px; border: 2px solid #ddd; }
+        .category-title { color: #333; margin-bottom: 10px; }
+        .category-products { display: flex; gap: 10px; flex-wrap: wrap; }
+        .product-card { padding: 15px; border: 1px solid #ccc; background: #f9f9f9; }
+        .external-product { border-left: 4px solid orange; }
+    </style>
+</head>
+<body>
+    <h1>Product Categories Debug</h1>
+    <div id="product-container"></div>
+
+    <script type="module">
+        import { productTypes } from './src/data/products.js';
+        import { externalProducts, getAllCategories } from './src/data/externalProducts.js';
+        import { createSvgIcon } from './src/components/SvgIcons.js';
+
+        const container = document.getElementById('product-container');
+        const categories = getAllCategories();
+        
+        console.log('Internal products:', Object.keys(productTypes));
+        console.log('External products:', Object.keys(externalProducts));
+        console.log('Categories:', categories);
+        
+        categories.forEach(category => {
+            const categoryDiv = document.createElement('div');
+            categoryDiv.className = 'product-category';
+            categoryDiv.innerHTML = `
+                <h3 class="category-title">${category.name}</h3>
+                <p>${category.description}</p>
+                <div class="category-products"></div>
+            `;
+            
+            const productsDiv = categoryDiv.querySelector('.category-products');
+            
+            if (category.key === 'inhouse') {
+                Object.entries(productTypes).forEach(([key, product]) => {
+                    const productCard = document.createElement('div');
+                    productCard.className = 'product-card';
+                    productCard.innerHTML = `
+                        <h4>${product.name}</h4>
+                        <p>${product.description}</p>
+                        <small>Internal Product</small>
+                    `;
+                    productsDiv.appendChild(productCard);
+                });
+            } else if (category.key === 'external') {
+                Object.entries(externalProducts).forEach(([key, product]) => {
+                    const productCard = document.createElement('div');
+                    productCard.className = 'product-card external-product';
+                    productCard.innerHTML = `
+                        <h4>${product.name}</h4>
+                        <p>${product.description}</p>
+                        <small>External Product - ${product.pricing.minQuantity} min qty</small>
+                    `;
+                    productsDiv.appendChild(productCard);
+                });
+            }
+            
+            container.appendChild(categoryDiv);
+        });
+    </script>
+</body>
+</html>

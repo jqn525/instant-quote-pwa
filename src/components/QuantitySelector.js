@@ -1,4 +1,26 @@
+/**
+ * QuantitySelector Component
+ * 
+ * Manages quantity selection with product-specific ranges and live pricing display.
+ * Features optimized rendering, event delegation, and pricing context management.
+ * 
+ * @class QuantitySelector
+ * @memberof Components
+ * 
+ * @example
+ * const quantitySelector = new QuantitySelector(
+ *   document.getElementById('quantity-container'),
+ *   pricingEngine,
+ *   (quantity) => console.log('Quantity changed:', quantity)
+ * );
+ */
 export class QuantitySelector {
+  /**
+   * Create a QuantitySelector instance
+   * @param {HTMLElement} container - Container element for the quantity selector
+   * @param {PricingEngine} pricingEngine - Pricing engine for calculations
+   * @param {Function} onQuantityChange - Callback for quantity changes
+   */
   constructor(container, pricingEngine, onQuantityChange) {
     this.container = container;
     this.pricingEngine = pricingEngine;
@@ -20,12 +42,44 @@ export class QuantitySelector {
     this.currentOptions = [];
     this.currentPaper = null;
     
+    // Event listener storage for cleanup
+    this.eventListeners = [];
+    
+    // State tracking for render optimization
+    this.lastRenderedState = null;
     
     this.init();
   }
 
-  init() {
-    this.render();
+  async init() {
+    await this.render();
+  }
+
+  /**
+   * Generate a unique state key for render optimization
+   * @returns {string} State key representing current component state
+   */
+  generateStateKey() {
+    const productKey = this.currentProduct?.name || 'none';
+    const sizeKey = this.currentSize?.name || 'none';
+    const paperKey = this.currentPaper?.id || 'none';
+    const optionsKey = this.currentOptions?.map(opt => opt.name).sort().join(',') || 'none';
+    return `${productKey}:${sizeKey}:${paperKey}:${optionsKey}`;
+  }
+
+  /**
+   * Update only selection state without full re-render for performance
+   */
+  updateSelectionOnly() {
+    const buttons = this.container.querySelectorAll('.quantity-btn');
+    buttons.forEach(button => {
+      const qty = parseInt(button.dataset.quantity);
+      if (qty === this.quantity) {
+        button.classList.add('selected');
+      } else {
+        button.classList.remove('selected');
+      }
+    });
   }
 
   getQuantitiesForProduct() {
@@ -35,14 +89,22 @@ export class QuantitySelector {
     return this.productQuantities['default'];
   }
 
-  render() {
+  async render() {
+    // Check if render is necessary to avoid unnecessary DOM operations
+    const currentState = this.generateStateKey();
+    if (this.lastRenderedState === currentState) {
+      // Only update selection state if needed
+      this.updateSelectionOnly();
+      return;
+    }
+    
     let quantityButtonsHTML = '';
     
     // Generate quantity buttons based on current product
     const quantities = this.getQuantitiesForProduct();
-    quantities.forEach(qty => {
+    for (const qty of quantities) {
       const isSelected = qty === this.quantity;
-      const pricing = this.calculatePricingForQuantity(qty);
+      const pricing = await this.calculatePricingForQuantity(qty);
       
       quantityButtonsHTML += `
         <button class="quantity-btn ${isSelected ? 'selected' : ''}" data-quantity="${qty}">
@@ -53,7 +115,7 @@ export class QuantitySelector {
           </div>
         </button>
       `;
-    });
+    }
     
 
     this.container.innerHTML = `
@@ -65,38 +127,66 @@ export class QuantitySelector {
       </div>
     `;
     
+    // Cache current state to avoid unnecessary re-renders
+    this.lastRenderedState = currentState;
+    
     // Setup event listeners after DOM is updated
     this.setupEventListeners();
   }
 
   setupEventListeners() {
-    // Remove existing listeners to prevent duplicates
-    if (this.clickHandler) {
-      this.container.removeEventListener('click', this.clickHandler);
-    }
+    // Clean up existing listeners first
+    this.cleanup();
     
-    // Create new handlers
-    this.clickHandler = (e) => {
+    // Use event delegation for better performance
+    this.clickHandler = async (e) => {
+      // Only handle clicks on quantity buttons using event delegation
       const quantityBtn = e.target.closest('.quantity-btn');
-      if (quantityBtn) {
+      if (quantityBtn && this.container.contains(quantityBtn)) {
         const quantity = quantityBtn.dataset.quantity;
         if (quantity) {
-          this.selectQuantity(parseInt(quantity));
+          e.preventDefault();
+          e.stopPropagation();
+          await this.selectQuantity(parseInt(quantity));
         }
       }
     };
     
-    // Attach new listeners
-    this.container.addEventListener('click', this.clickHandler);
+    // Use single delegated event listener for better performance
+    this.addEventListenerWithCleanup(this.container, 'click', this.clickHandler);
   }
 
-  calculatePricingForQuantity(quantity) {
+  // Helper method to add event listeners with automatic cleanup tracking
+  addEventListenerWithCleanup(element, event, handler) {
+    element.addEventListener(event, handler);
+    this.eventListeners.push({ element, event, handler });
+  }
+
+  // Clean up all event listeners
+  cleanup() {
+    this.eventListeners.forEach(({ element, event, handler }) => {
+      if (element && element.removeEventListener) {
+        element.removeEventListener(event, handler);
+      }
+    });
+    this.eventListeners = [];
+  }
+
+  // Destructor method for complete cleanup
+  destroy() {
+    this.cleanup();
+    this.container = null;
+    this.pricingEngine = null;
+    this.onQuantityChange = null;
+  }
+
+  async calculatePricingForQuantity(quantity) {
     if (!this.currentProduct || !quantity) {
       return { total: 0, unitPrice: 0 };
     }
     
     try {
-      return this.pricingEngine.calculatePrice(
+      return await this.pricingEngine.calculatePrice(
         this.currentProduct,
         this.currentSize,
         this.currentOptions,
@@ -115,14 +205,20 @@ export class QuantitySelector {
     return `$${amount.toFixed(2)}`;
   }
 
-  selectQuantity(quantity) {
+  async selectQuantity(quantity) {
     this.quantity = quantity;
-    this.render();
+    // Use optimized update for quantity-only changes
+    const currentState = this.generateStateKey();
+    if (this.lastRenderedState === currentState) {
+      this.updateSelectionOnly();
+    } else {
+      await this.render();
+    }
     this.triggerChange();
   }
 
 
-  updatePricingContext(product, size, options, paper) {
+  async updatePricingContext(product, size, options, paper) {
     this.currentProduct = product;
     this.currentSize = size;
     this.currentOptions = options || [];
@@ -163,7 +259,7 @@ export class QuantitySelector {
     }
   }
 
-  setQuantity(quantity) {
+  async setQuantity(quantity) {
     const numQuantity = parseInt(quantity, 10);
     if (!isNaN(numQuantity)) {
       this.quantity = Math.max(this.minQuantity, Math.min(this.maxQuantity, numQuantity));
@@ -173,7 +269,7 @@ export class QuantitySelector {
       if (this.quantity < this.minQuantity) {
         this.quantity = this.minQuantity;
       }
-      this.render();
+      await this.render();
       this.triggerChange();
     }
   }
@@ -182,7 +278,7 @@ export class QuantitySelector {
     return this.quantity;
   }
 
-  reset() {
+  async reset() {
     this.quantity = 50;
     this.currentProduct = null;
     this.currentSize = null;

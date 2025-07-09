@@ -1,5 +1,6 @@
 import { productTypes, defaultSettings } from '../data/products.js';
 import { paperStocks, CLICK_COST } from '../data/paperStocks.js';
+import { validationService } from '../utils/validation.js';
 
 export class SettingsService {
   constructor() {
@@ -9,19 +10,34 @@ export class SettingsService {
   }
 
   /**
-   * Load settings from localStorage or return defaults
+   * Load settings from localStorage with validation and sanitization
    * @returns {Object} Settings object
    */
   loadSettings() {
     try {
       const storedSettings = localStorage.getItem(this.storageKey);
       if (storedSettings) {
-        const parsedSettings = JSON.parse(storedSettings);
-        // Merge with defaults to ensure all keys are present
-        return { ...this.getDefaultSettings(), ...parsedSettings };
+        // Use safe JSON parsing to prevent injection attacks
+        const parsedSettings = validationService.safeJsonParse(storedSettings, null);
+        
+        if (parsedSettings) {
+          // Validate and sanitize the loaded settings
+          const validation = validationService.validateSettingsStructure(parsedSettings);
+          
+          if (validation.isValid) {
+            // Merge sanitized settings with defaults
+            return { ...this.getDefaultSettings(), ...validation.sanitizedSettings };
+          } else {
+            console.warn('Invalid settings detected, using defaults:', validation.errors);
+            // Clear corrupted settings
+            localStorage.removeItem(this.storageKey);
+          }
+        }
       }
     } catch (error) {
       console.warn('Failed to load settings from localStorage:', error);
+      // Clear potentially corrupted settings
+      localStorage.removeItem(this.storageKey);
     }
     return this.getDefaultSettings();
   }
@@ -42,18 +58,42 @@ export class SettingsService {
    * @returns {Object} Default settings object
    */
   getDefaultSettings() {
-    // Extract setup fees from products
+    // Extract setup fees from products (only for standard products)
     const setupFees = {};
     Object.keys(productTypes).forEach(key => {
-      setupFees[key] = productTypes[key].pricing.setupFee;
+      const product = productTypes[key];
+      
+      // Skip external products that don't have setup fees
+      if (product.isExternal || product.pricing.type === 'interpolation') {
+        return;
+      }
+      
+      // Add safety check for setup fee
+      if (product.pricing && typeof product.pricing.setupFee === 'number') {
+        setupFees[key] = product.pricing.setupFee;
+      } else {
+        console.warn(`Product ${key} missing setup fee`);
+      }
     });
 
-    // Extract production rates and volume exponents
+    // Extract production rates and volume exponents (only for standard products)
     const productionRates = {};
     const volumeExponents = {};
     Object.keys(productTypes).forEach(key => {
-      productionRates[key] = productTypes[key].pricing.overhead.k;
-      volumeExponents[key] = productTypes[key].pricing.overhead.e;
+      const product = productTypes[key];
+      
+      // Skip external products that don't have overhead pricing structure
+      if (product.isExternal || product.pricing.type === 'interpolation') {
+        return;
+      }
+      
+      // Add safety checks for overhead property
+      if (product.pricing && product.pricing.overhead) {
+        productionRates[key] = product.pricing.overhead.k;
+        volumeExponents[key] = product.pricing.overhead.e;
+      } else {
+        console.warn(`Product ${key} missing overhead pricing structure`);
+      }
     });
 
     // Extract finishing costs
@@ -108,25 +148,70 @@ export class SettingsService {
   }
 
   /**
-   * Update a setting value
+   * Update a setting value with validation and rate limiting
    * @param {string} key - Setting key
    * @param {*} value - New value
    * @param {string} subKey - Sub-key for nested settings
+   * @returns {Object} Update result with success status and errors
    */
   updateSetting(key, value, subKey = null) {
-    if (subKey) {
-      if (!this.settings[key]) {
-        this.settings[key] = {};
+    const result = {
+      success: false,
+      errors: []
+    };
+
+    try {
+      // Check rate limiting to prevent rapid API abuse
+      const rateLimitKey = `settings_update_${key}_${subKey || 'root'}`;
+      if (!validationService.checkRateLimit(rateLimitKey, 50, 60000)) {
+        result.errors.push('Too many updates. Please wait before making more changes.');
+        return result;
       }
-      this.settings[key][subKey] = value;
-    } else {
-      this.settings[key] = value;
+
+      // Validate the setting value
+      const validation = validationService.validatePricingParameter(key, value, subKey);
+      if (!validation.isValid) {
+        result.errors = validation.errors;
+        return result;
+      }
+
+      // Update the setting with validated/sanitized value
+      if (subKey) {
+        if (!this.settings[key]) {
+          this.settings[key] = {};
+        }
+        this.settings[key][subKey] = validation.value;
+      } else {
+        this.settings[key] = validation.value;
+      }
+      
+      // Save to localStorage
+      this.saveSettings();
+      
+      // DEBUG: Log settings change
+      console.log('⚙️ SettingsService: Setting changed', {
+        key,
+        value: validation.value,
+        subKey,
+        newSettings: this.settings,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Dispatch change event
+      this.dispatchEvent('settingsChanged', { 
+        key, 
+        value: validation.value, 
+        subKey 
+      });
+
+      result.success = true;
+      return result;
+
+    } catch (error) {
+      console.error('Error updating setting:', error);
+      result.errors.push('An error occurred while updating the setting');
+      return result;
     }
-    
-    // Save to localStorage
-    this.saveSettings();
-    
-    this.dispatchEvent('settingsChanged', { key, value, subKey });
   }
 
   /**

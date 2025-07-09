@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Final Magnets Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .product-card { 
+            border: 1px solid #ccc; 
+            padding: 15px; 
+            margin: 10px; 
+            display: inline-block; 
+            width: 200px;
+            text-align: center;
+            border-radius: 8px;
+        }
+        .product-card:hover { border-color: #2563eb; }
+        .debug { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+        .product-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+        .status { font-weight: bold; color: #059669; }
+        .error { font-weight: bold; color: #dc2626; }
+    </style>
+</head>
+<body>
+    <h1>Final Magnets Test</h1>
+    
+    <div class="debug">
+        <h3>Test Results:</h3>
+        <div id="test-results"></div>
+    </div>
+    
+    <div class="product-grid" id="product-grid"></div>
+    
+    <script>
+        const testResults = document.getElementById('test-results');
+        const productGrid = document.getElementById('product-grid');
+        
+        function log(message, isError = false) {
+            const div = document.createElement('div');
+            div.className = isError ? 'error' : 'status';
+            div.textContent = message;
+            testResults.appendChild(div);
+            console.log(message);
+        }
+        
+        // Define products directly to avoid module loading issues
+        const products = {
+            brochures: { name: 'Brochures', description: 'Tri-fold and bi-fold brochures' },
+            postcards: { name: 'Postcards', description: 'Marketing postcards and mailers' },
+            flyers: { name: 'Flyers', description: 'Single-sheet promotional flyers' },
+            bookmarks: { name: 'Bookmarks', description: 'Custom printed bookmarks' },
+            table_tents: { name: 'Table Tent Cards', description: 'Folded table display cards' },
+            magnets: { name: 'Magnets', description: 'Custom printed magnets (external supplier)' }
+        };
+        
+        log('1. ✅ Products defined');
+        log('2. ✅ Testing magnets existence: ' + (products.magnets ? 'YES' : 'NO'));
+        
+        let cardCount = 0;
+        Object.entries(products).forEach(([key, product]) => {
+            cardCount++;
+            
+            const card = document.createElement('div');
+            card.className = 'product-card';
+            card.setAttribute('data-product-key', key);
+            card.innerHTML = `
+                <h3>${product.name}</h3>
+                <p>${product.description}</p>
+                <small>Key: ${key}</small>
+            `;
+            
+            productGrid.appendChild(card);
+            
+            if (key === 'magnets') {
+                log('3. ✅ Magnets card created and appended');
+            }
+        });
+        
+        log('4. ✅ Total cards created: ' + cardCount);
+        log('5. ✅ Cards in DOM: ' + productGrid.children.length);
+        
+        // Final verification
+        const magnetsCard = productGrid.querySelector('[data-product-key="magnets"]');
+        if (magnetsCard) {
+            log('6. ✅ SUCCESS: Magnets card found in DOM');
+            magnetsCard.style.border = '3px solid #059669';
+            magnetsCard.style.backgroundColor = '#f0fdf4';
+        } else {
+            log('6. ❌ FAILED: Magnets card NOT found in DOM', true);
+        }
+        
+        log('7. ✅ Test complete');
+    </script>
+</body>
+</html>

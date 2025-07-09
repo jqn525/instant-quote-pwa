@@ -6,12 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Purpose**: A Progressive Web App (PWA) pricing calculator designed specifically for print shop customer service staff to quickly generate accurate quotes for common print products.
 
-**Current Products**: Streamlined catalog with 5 core products:
+**Current Products**: Streamlined catalog with 8 products (5 in-house + 3 external suppliers):
 - **Brochures**: Tri-fold and bi-fold brochures
 - **Postcards**: Marketing postcards and mailers  
 - **Flyers**: Single-sheet promotional materials
 - **Bookmarks**: Custom printed bookmarks
 - **Table Tent Cards**: Folded table display cards with mandatory finishing
+- **Magnets**: Custom printed magnets (external supplier with interpolation pricing)
+- **Stickers**: Custom die cut stickers (external supplier with interpolation pricing)
+- **Sticker Sheets**: Custom kiss cut sticker sheets (external supplier with interpolation pricing)
 
 **Core Functionality**: Staff click through an intuitive interface to select products, choose sizes with recommended defaults, select paper through hierarchical menus, set quantities with product-specific ranges, and instantly see calculated pricing for internal cost centers (tax-free).
 
@@ -34,6 +37,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 The application uses Vite with PWA plugin for fast development and optimized production builds.
 
 **Module System**: Project uses ES modules (`"type": "module"` in package.json) - all imports/exports use ES6 module syntax.
+
+**Critical Dependencies**: The application requires these utility modules for full functionality:
+- `utils/constants.js` - Contains CACHE_CONFIG, PRICING_CONSTANTS, validation limits
+- `utils/errorHandler.js` - Global error handling and recovery mechanisms  
+- `utils/helpers.js` - formatCurrency, formatNumber, and utility functions
+- `ExternalPricingEngine.js` - Handles interpolation-based pricing for external products
 
 **Safari Compatibility**: Use `npm run dev -- --host` if Safari cannot connect to localhost. Alternative URLs: http://127.0.0.1:5173 or http://0.0.0.0:5173
 
@@ -126,13 +135,25 @@ The application uses Vite with PWA plugin for fast development and optimized pro
 - `SvgIcons.js` - SVG icon utilities for UI elements
 
 **Business Logic**:
-- `PricingEngine.js` - C(Q) formula implementation with per-piece finishing cost multiplication
-- `CartService.js` - Cart management with paper-aware repricing
+- `PricingEngine.js` - C(Q) formula implementation with dual pricing system routing and SettingsService integration
+- `ExternalPricingEngine.js` - Linear interpolation engine for external supplier products with cost matrices
+- `CartService.js` - Cart management with paper-aware repricing and localStorage persistence
 - `QuoteService.js` - Tax-free quote generation for internal billing
+- `SettingsService.js` - Real-time pricing parameter management with event-driven updates
 
 **Data Layer**:
-- `products.js` - 5-product catalog with imposition-based pricing and per-piece finishing costs
+- `products.js` - 8-product catalog with imposition-based pricing and per-piece finishing costs
 - `paperStocks.js` - Paper inventory with hierarchical helper functions and product-specific rules
+- `externalProducts.js` - External supplier products with interpolation-based pricing configurations
+- `magnetPricing.js` - Magnet supplier cost matrices and pricing rules
+- `stickerPricing.js` - Sticker supplier cost matrices and pricing rules  
+- `stickerSheetPricing.js` - Sticker sheet supplier cost matrices and pricing rules
+
+**Utilities & Configuration**:
+- `utils/constants.js` - Application-wide constants, validation limits, cache config
+- `utils/errorHandler.js` - Comprehensive error handling with recovery mechanisms
+- `utils/helpers.js` - Utility functions for formatting, validation, and common operations
+- `utils/validation.js` - Input validation and sanitization functions
 
 ## Key Features
 
@@ -195,7 +216,60 @@ The application uses Vite with PWA plugin for fast development and optimized pro
 - Settings changes dispatch `settingsChanged` events that trigger `app.updateCalculation()`
 - All existing functionality preserved - settings system is additive, not replacing core logic
 
+## Dual Pricing Architecture
+
+**Standard Products (In-House)**: Use C(Q) formula with imposition-based calculations
+- Brochures, Postcards, Flyers, Bookmarks, Table Tents
+- PricingEngine.js handles all calculations with SettingsService integration
+- Real-time paper cost integration and finishing cost multiplication
+
+**External Products**: Interpolation-based pricing with supplier cost matrices
+- Magnets, Stickers, Sticker Sheets use ExternalPricingEngine with linear interpolation
+- 25% markup on supplier costs with quantity breaks at [25, 50, 100, 250, 500, 1000]
+- Minimum order: 25 units, increments of 5 pieces
+- No paper selection (workflow: simplified) - products sourced with materials included
+- Each design/artwork priced separately (no bundling across quantities)
+
+## External Pricing System
+
+**Detection & Routing**: Products with `isExternal: true` flag are automatically routed to ExternalPricingEngine
+- PricingEngine.js checks for isExternal flag and routes accordingly
+- Size format conversion: "2\" × 2\"" → "2X2" for supplier cost matrix lookup
+- Dynamic import of external product configurations when needed
+
+**Interpolation Formula**: `Customer_Price(Q, Size) = Supplier_Cost(Q, Size) × 1.25`
+- **Step 1**: Find quantity brackets surrounding desired quantity (Q1 ≤ Q ≤ Q2)
+- **Step 2**: Linear interpolation: `C(Q) = C1 + (Q - Q1) × (C2 - C1) / (Q2 - Q1)`
+- **Step 3**: Apply 25% markup: `Final_Price = C(Q) × 1.25`
+- **Validation**: Quantities validated to minimum 25 units, rounded up to 5-unit increments
+
+**Supplier Cost Updates**: When supplier prices change:
+1. Update supplier cost matrices in pricing files (`magnetPricing.js`, `stickerPricing.js`, `stickerSheetPricing.js`)
+2. Customer pricing automatically recalculates with 25% markup
+3. No code changes required - data-driven pricing updates
+
+**Order Rules**:
+- Minimum order: 25 pieces per artwork/design
+- Orders must be in increments of 5 pieces
+- No quantity bundling across different designs
+- Custom sizes round up to next standard size bracket
+
 ## Recent System Changes
+
+**Critical External Product Fixes (July 2025)**: Resolved application initialization and pricing calculation errors
+- Fixed SettingsService to handle external products without overhead pricing structure
+- Fixed character mismatch in size conversion (× vs x) for external product pricing
+- Updated quantity grid to display 5 items per row for better organization
+- Customized magnet quantity presets to [25, 50, 75, 100, 125, 150, 175, 200, 250, 275]
+- Improved custom quantity input spacing and alignment
+
+**External Product Integration (2025)**: Added three external supplier products with interpolation pricing
+- Magnets: 2"×2" to 5"×5" custom printed magnets
+- Stickers: 2"×2" to 5"×5" custom die cut stickers  
+- Sticker Sheets: 4"×6" to 5.5"×8.5" custom kiss cut sticker sheets
+- Full ExternalPricingEngine implementation with linear interpolation between supplier cost brackets
+- Products marked with `isExternal: true` flag to route to external pricing system
+- Supplier cost matrices stored in separate pricing files for easy supplier updates
 
 **Per-Piece Finishing Model (2025)**: Complete transition from flat fee finishing to per-piece model
 - Brochures: Folding $0.20/pc, Scoring $0.10/pc (was $15.00 flat)
@@ -203,10 +277,12 @@ The application uses Vite with PWA plugin for fast development and optimized pro
 - PricingEngine.js updated to multiply finishing costs by quantity
 - Formula breakdown now correctly displays Ff component
 
-**Product Expansion (2025)**: Added bookmarks and table tent cards
-- Bookmarks: 120# Cover Uncoated default, 2"x6", 2"x7", 2"x8" sizes, 10-up imposition
-- Table Tents: 100# Cover Silk default, 4"x6", 5"x7" sizes, 2-up imposition, mandatory finishing
-- Cover stock only restrictions for both new products
+**Product Expansion (2025)**: Added bookmarks, table tent cards, and external products
+- Bookmarks: 120# Cover Uncoated default, 2"×6", 2"×7", 2"×8" sizes, 10-up imposition
+- Table Tents: 100# Cover Silk default, 4"×6", 5"×7" sizes, 2-up imposition, mandatory finishing
+- External Products: Magnets, Stickers, Sticker Sheets with interpolation-based pricing
+- Cover stock only restrictions for bookmarks and table tents
+- External products skip paper selection and use simplified workflow
 
 **Volume Scaling Differentiation (2025)**: Product-specific exponent values
 - Table Tents: e = 0.85 (reduced bulk discount due to labor-intensive finishing)
@@ -216,6 +292,7 @@ The application uses Vite with PWA plugin for fast development and optimized pro
 **Quantity Range Customization (2025)**: Product-specific quantity ranges
 - Table Tents: [10, 25, 50, 75, 100] (smaller batches due to manual labor)
 - Standard Products: [50, 75, 100, 125, 150, 200, 250, 500, 750, 1000]
+- External Products: [25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 125, 150, 175, 200, 250, 300, 350, 400, 450, 500, 600, 700, 800, 900, 1000] (5-unit increments)
 - Intelligent quantity switching preserves valid selections when changing products
 
 **Auto-Selection Enhancements (2025)**: 
@@ -245,13 +322,310 @@ The application uses Vite with PWA plugin for fast development and optimized pro
 - Table tents auto-select mandatory finishing via `autoSelectMandatoryFinishing()`
 - Maintains user customization options through hierarchical paper selection interface
 
-**Debugging Capabilities**: Enhanced formula validation and troubleshooting
-- `PriceDisplay.js` includes comprehensive breakdown showing all formula components
+**Debugging and Troubleshooting**: Enhanced validation and diagnostic capabilities
+
+**Formula Debugging**:
+- `PriceDisplay.js` includes comprehensive breakdown showing all formula components (S, k, e, v, Ff)
 - Real-time display of imposition values, paper costs, and variable cost calculations
 - Debug output shows size object details and paper selection state for testing
 - Dynamic exponent display based on product type
 
+**Common Debugging Scenarios**:
+```javascript
+// Debug pricing calculations
+console.log('Pricing Debug:', {
+    product: this.currentProduct,
+    size: this.currentSize,
+    paper: this.currentPaper,
+    quantity: this.currentQuantity,
+    imposition: this.pricingEngine.getImposition(this.currentSize),
+    breakdown: this.pricingEngine.calculatePrice(this.currentQuantity, this.currentProduct, this.currentSize, this.currentPaper, this.currentOptions)
+});
+
+// Debug auto-selection issues
+console.log('Auto-selection State:', {
+    sizeSelected: !!this.currentSize,
+    paperSelected: !!this.currentPaper,
+    finishingSelected: this.currentOptions
+});
+
+// Debug settings integration
+console.log('Settings Debug:', {
+    settingsService: !!this.settingsService,
+    currentSettings: this.settingsService?.getSettings(),
+    fallbackSettings: this.pricingEngine.settings
+});
+```
+
+**Troubleshooting Guide**:
+- **No pricing displayed**: Check if size, paper, and quantity are all selected
+- **Incorrect pricing**: Verify imposition values in `PricingEngine.js` lookup table
+- **Event handlers not working**: Ensure `setupEventListeners()` called after `render()`
+- **Auto-selection failing**: Check DOM readiness - use `setTimeout(100ms)` for auto-selection
+- **Settings not persisting**: Verify localStorage permissions and 'instant-quote-settings' key
+- **External product pricing fails**: Check size conversion regex handles both × and x characters
+- **Application won't initialize**: Verify SettingsService skips external products in extractDefaults()
+
+**Common Pitfalls and Error Patterns**:
+
+**Event Handler Issues**:
+- ❌ **Mistake**: Calling `setupEventListeners()` only in `init()` method
+- ✅ **Fix**: Always call `setupEventListeners()` at the end of `render()` method
+- ❌ **Mistake**: Not binding event handlers as instance properties
+- ✅ **Fix**: Store bound handlers as `this.handleClick = this.handleClick.bind(this)`
+
+**Auto-Selection Timing**:
+- ❌ **Mistake**: Auto-selection immediately after DOM update
+- ✅ **Fix**: Use `setTimeout(() => { ... }, 100)` for DOM readiness
+- ❌ **Mistake**: Auto-selection without checking if elements exist
+- ✅ **Fix**: Always check element existence before auto-selection
+
+**State Management**:
+- ❌ **Mistake**: Direct state mutation in components
+- ✅ **Fix**: Use callbacks to update state through main app
+- ❌ **Mistake**: Missing paper data in cart items
+- ✅ **Fix**: Always preserve `{size, options, paper}` object structure
+
+**Pricing Calculations**:
+- ❌ **Mistake**: Hardcoded pricing values in components
+- ✅ **Fix**: Use `PricingEngine` with settings service integration
+- ❌ **Mistake**: Mental math for non-integer exponents
+- ✅ **Fix**: Use Python for accurate calculations: `python3 -c "print(100**(0.75))"`
+
+**Settings Integration**:
+- ❌ **Mistake**: Assuming settings service is always available
+- ✅ **Fix**: Check `this.settingsService` existence and provide fallbacks
+- ❌ **Mistake**: Not triggering recalculation after settings changes
+- ✅ **Fix**: Listen for `settingsChanged` events and call `app.updateCalculation()`
+
 **Error Handling**: Comprehensive validation and minimum order enforcement
+
+## Performance Optimization Patterns (2025)
+
+**Render Optimization**: Components now implement state-based rendering to prevent unnecessary DOM operations:
+
+```javascript
+// State tracking for render optimization
+generateStateKey() {
+  const productKey = this.currentProduct?.name || 'none';
+  const sizeKey = this.currentSize?.name || 'none';
+  const paperKey = this.currentPaper?.id || 'none';
+  const optionsKey = this.currentOptions?.map(opt => opt.name).sort().join(',') || 'none';
+  return `${productKey}:${sizeKey}:${paperKey}:${optionsKey}`;
+}
+
+render() {
+  // Check if render is necessary to avoid unnecessary DOM operations
+  const currentState = this.generateStateKey();
+  if (this.lastRenderedState === currentState) {
+    // Only update selection state if needed
+    this.updateSelectionOnly();
+    return;
+  }
+  // Full render only when state actually changes
+  // Cache current state to avoid unnecessary re-renders
+  this.lastRenderedState = currentState;
+}
+```
+
+**Event Delegation Patterns**: Use single delegated listeners for better performance:
+
+```javascript
+// Use event delegation for better performance with dynamic content
+this.clickHandler = (e) => {
+  const quantityBtn = e.target.closest('.quantity-btn');
+  if (quantityBtn && this.container.contains(quantityBtn)) {
+    // Handle click
+  }
+};
+this.container.addEventListener('click', this.clickHandler);
+```
+
+**Pricing Calculation Caching**: PricingEngine implements LRU cache with settings-aware invalidation:
+
+```javascript
+// Generate cache key including settings hash
+generateCacheKey(product, size, options, quantity, paper) {
+  const settingsHash = this.getSettingsHash();
+  return `${productKey}:${sizeKey}:${optionsKey}:${quantity}:${paperKey}:${settingsHash}`;
+}
+
+// LRU-like cache management
+setCachedPrice(cacheKey, result) {
+  if (this.pricingCache.size >= this.cacheMaxSize) {
+    const firstKey = this.pricingCache.keys().next().value;
+    this.pricingCache.delete(firstKey);
+  }
+  this.pricingCache.set(cacheKey, result);
+}
+```
+
+**Mathematical Operation Memoization**: Expensive Math.pow operations are cached:
+
+```javascript
+// Memoized Math.pow for performance optimization
+memoizedPow(base, exponent) {
+  const key = `${base}^${exponent}`;
+  if (this.mathPowCache.has(key)) {
+    return this.mathPowCache.get(key);
+  }
+  const result = Math.pow(base, exponent);
+  // LRU cache management
+  this.mathPowCache.set(key, result);
+  return result;
+}
+```
+
+**Service Worker Optimization**: Stale-while-revalidate strategy for better perceived performance:
+
+```javascript
+// Stale-while-revalidate implementation
+if (cachedResponse && isCacheableResource) {
+  const responseToReturn = cachedResponse.clone();
+  
+  // Return cached response immediately, fetch fresh in background
+  fetch(event.request)
+    .then((freshResponse) => {
+      if (freshResponse && freshResponse.status === 200) {
+        dynamicCache.put(event.request, freshResponse.clone());
+      }
+    })
+    .catch(() => {});
+    
+  return responseToReturn;
+}
+```
+
+## Security & Validation Patterns (2025)
+
+**Input Validation**: Comprehensive validation system with XSS protection:
+
+```javascript
+// XSS prevention and input sanitization
+sanitizeInput(input) {
+  if (typeof input !== 'string') return '';
+  
+  return input
+    .replace(/[<>]/g, '') // Remove potential script tags
+    .replace(/javascript:/gi, '') // Remove javascript: protocols
+    .replace(/on\w+=/gi, '') // Remove event handlers
+    .trim();
+}
+
+// Rate limiting for API protection
+checkRateLimit(key, maxAttempts, windowMs) {
+  const now = Date.now();
+  const attempts = this.rateLimitStore.get(key) || [];
+  const validAttempts = attempts.filter(time => now - time < windowMs);
+  return validAttempts.length < maxAttempts;
+}
+```
+
+**Error Boundaries**: Graceful error handling with user notifications and recovery:
+
+```javascript
+// Global error handling with recovery mechanisms
+handleError(errorInfo, options = {}) {
+  const errorEntry = {
+    id: this.generateErrorId(),
+    timestamp: new Date().toISOString(),
+    type: errorInfo.type || 'application',
+    component: options.component,
+    severity: options.severity || 'error',
+    message: errorInfo.message || 'Unknown error'
+  };
+  
+  // Show user notification if not suppressed
+  if (!options.suppressNotification) {
+    this.showUserNotification(errorEntry, options.userMessage);
+  }
+  
+  // Execute recovery action if provided
+  if (options.recoveryAction && typeof options.recoveryAction === 'function') {
+    try {
+      options.recoveryAction();
+    } catch (recoveryError) {
+      // Log recovery failure but don't cascade errors
+    }
+  }
+}
+```
+
+## Code Organization Patterns (2025)
+
+**Centralized Constants**: All configuration values moved to constants.js:
+
+```javascript
+// Example from constants.js - eliminates magic numbers
+export const PRICING_CONSTANTS = {
+  DEFAULT_PRODUCTION_RATE: 1.50,
+  DEFAULT_VOLUME_EXPONENTS: {
+    standard: 0.75,
+    tableTents: 0.85
+  },
+  MATERIAL_MARKUP: 1.5,
+  DEFAULT_MINIMUM_ORDER: 5.00
+};
+
+export const CACHE_CONFIG = {
+  pricingCache: { maxSize: 100, ttl: 300000 },
+  domCache: { maxSize: 50, ttl: 600000 },
+  mathCache: { maxSize: 50, ttl: 3600000 }
+};
+```
+
+**Utility Function Library**: Common operations consolidated in helpers.js:
+
+```javascript
+// Reusable utilities with error handling
+export const formatCurrency = (amount, currency = 'USD') => {
+  if (typeof amount !== 'number' || isNaN(amount)) {
+    return '$0.00';
+  }
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency
+  }).format(amount);
+};
+
+export const createSafeEventListener = (element, event, handler, options = {}) => {
+  const safeHandler = (e) => {
+    try {
+      handler(e);
+    } catch (error) {
+      console.error('Event handler error:', error);
+      if (options.removeOnError) {
+        element.removeEventListener(event, safeHandler);
+      }
+    }
+  };
+  element.addEventListener(event, safeHandler, options);
+  return () => element.removeEventListener(event, safeHandler);
+};
+```
+
+**Comprehensive JSDoc Documentation**: All major functions documented with examples:
+
+```javascript
+/**
+ * Calculate pricing using C(Q) = S + Q^e × k + Q × v + Ff formula
+ * @param {Object} product - Product type object
+ * @param {Object} size - Selected size with imposition data
+ * @param {Array} options - Selected options (includes finishing)
+ * @param {number} quantity - Quantity for calculation
+ * @param {Object} paper - Selected paper (optional)
+ * @returns {Object} Complete pricing breakdown with validation
+ * 
+ * @example
+ * const pricing = pricingEngine.calculatePrice(
+ *   { name: 'Brochures', pricing: {...} },
+ *   { name: '8.5" x 11"', imposition: 2 },
+ *   [{ name: 'Folding', cost: 0.20 }],
+ *   100,
+ *   { id: 'text_80_uncoated', costPerSheet: 0.15 }
+ * );
+ */
+```
 
 ## Development Workflow
 
@@ -264,7 +638,37 @@ The application uses Vite with PWA plugin for fast development and optimized pro
 6. Use `{size, options, paper}` object structure for data passing
 7. For selection components, implement auto-selection for immediate pricing
 
-**Critical Event Handling**: Always call `setupEventListeners()` after DOM updates in `render()`. Components that use `innerHTML` destroy existing event listeners, requiring re-attachment.
+**Critical Event Handling Patterns**: Components must follow these patterns to prevent memory leaks and ensure proper functionality:
+
+```javascript
+// REQUIRED: Always call setupEventListeners() after render()
+render() {
+    this.container.innerHTML = '...';
+    this.setupEventListeners(); // CRITICAL: Must be called here, not just in init()
+    return this.container.innerHTML;
+}
+
+// REQUIRED: Store event handlers as instance properties for cleanup
+setupEventListeners() {
+    // Store handlers as instance properties
+    this.handleSizeClick = this.handleSizeClick.bind(this);
+    this.handlePaperChange = this.handlePaperChange.bind(this);
+    
+    // Add event listeners
+    this.container.addEventListener('click', this.handleSizeClick);
+    this.container.addEventListener('change', this.handlePaperChange);
+}
+
+// REQUIRED: Clean up event listeners to prevent memory leaks
+cleanup() {
+    if (this.container) {
+        this.container.removeEventListener('click', this.handleSizeClick);
+        this.container.removeEventListener('change', this.handlePaperChange);
+    }
+}
+```
+
+**Why This Matters**: Components using `innerHTML` destroy existing event listeners, requiring re-attachment after every render. Failing to follow this pattern results in broken interactivity and memory leaks.
 
 **Auto-Selection Requirements**: Components managing product configuration must implement auto-selection:
 - `autoSelectRecommendedSize()` should trigger on product updates to ensure immediate pricing
@@ -294,7 +698,65 @@ The application uses Vite with PWA plugin for fast development and optimized pro
 **PWA Updates**: When modifying cached resources, increment version in `src/sw.js` to trigger cache updates on deployment.
 
 **Mathematical Calculations**: For any pricing calculations or non-trivial mathematical operations (especially with non-integer exponents), always use the Bash tool with Python to ensure precision:
+
+**Common Calculations**:
 ```bash
-python3 -c "print(100**(0.75))"
+# Volume scaling calculations (critical for pricing accuracy)
+python3 -c "print(100**(0.75))"  # Standard products
+python3 -c "print(100**(0.85))"  # Table tents (higher exponent)
+
+# Variable cost calculations with imposition
+python3 -c "print((0.15 + 0.10) * 1.5 / 2)"  # (paper + clicks) * markup / imposition
+
+# Finishing cost calculations
+python3 -c "print(0.20 * 100)"  # Per-piece finishing * quantity
+
+# Complete formula verification
+python3 -c "
+S = 30.00
+k = 1.50
+e = 0.75
+v = 0.1875
+Ff = 20.00
+Q = 100
+total = S + (Q**e) * k + Q * v + Ff
+print(f'Total: ${total:.2f}')
+"
 ```
-Never rely on mental approximations for financial calculations - accuracy is critical for real pricing scenarios.
+
+**Why This Matters**: Financial calculations require precision - mental approximations can lead to significant pricing errors. Always verify complex calculations with Python, especially for:
+- Non-integer exponents (0.75, 0.85)
+- Multi-step formula calculations
+- Variable cost computations with division
+- Bulk pricing scenarios with large quantities
+
+## Known Issues & Debugging
+
+**Magnets Visibility Issue**: Magnets product is fully integrated in data layer but may not appear in UI due to subtle rendering pipeline issue. If magnets don't appear:
+
+1. **Check Console**: Look for debug messages `🔍 Products.js loaded with products:` and `🔍 Magnets exists:`
+2. **Hard Refresh**: Use Ctrl+Shift+R (Cmd+Shift+R on Mac) to clear browser cache
+3. **Manual DOM Inspection**: 
+   ```javascript
+   console.log('Product cards:', document.querySelectorAll('.product-card'));
+   console.log('Magnets card:', document.querySelector('[data-product-key="magnets"]'));
+   ```
+4. **Test Files Available**: `debug_magnets_issue.html`, `cache_bust_test.html`, and `test_simplified_magnets.html` for systematic debugging
+
+**Reference**: See `MAGNETS_DEBUGGING_REPORT.md` for comprehensive analysis of all debugging attempts and potential solutions.
+
+**Formula Validation**: When debugging pricing issues, calculate each component separately:
+```bash
+python3 -c "
+Q = 100
+S = 30.00
+k_component = (Q**0.75) * 1.50
+v_component = Q * 0.1875
+Ff = 20.00
+print(f'S: ${S:.2f}')
+print(f'k component: ${k_component:.2f}')
+print(f'v component: ${v_component:.2f}')
+print(f'Ff: ${Ff:.2f}')
+print(f'Total: ${S + k_component + v_component + Ff:.2f}')
+"
+```

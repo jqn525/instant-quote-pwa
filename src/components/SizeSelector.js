@@ -37,11 +37,35 @@ export class SizeSelector {
     this.selectedFinish = null;
     this.paperSelectionStep = 1; // 1=type, 2=weight, 3=finish
     
+    // Event listener storage for cleanup
+    this.eventListeners = [];
+    
     // Find or create paper container
     this.paperContainer = this.findOrCreatePaperContainer();
   }
 
+  hideExistingPaperUI() {
+    // Hide existing paper container and header
+    const existingContainer = document.querySelector('.paper-grid');
+    if (existingContainer) {
+      existingContainer.style.display = 'none';
+    }
+    
+    // Hide paper header
+    const paperHeaders = document.querySelectorAll('h3');
+    paperHeaders.forEach(header => {
+      if (header.textContent === 'Paper Type') {
+        header.style.display = 'none';
+      }
+    });
+  }
+
   findOrCreatePaperContainer() {
+    // Skip paper container creation for external products
+    if (this.currentProduct && this.currentProduct.isExternal) {
+      return null;
+    }
+    
     // Look for existing paper container
     let container = document.querySelector('.paper-grid');
     if (!container) {
@@ -56,16 +80,64 @@ export class SizeSelector {
       const header = document.createElement('h3');
       header.textContent = 'Paper Type';
       this.optionsContainer.parentNode.insertBefore(header, container);
+    } else {
+      // Show existing container for non-external products
+      container.style.display = 'block';
+      
+      // Show paper header
+      const paperHeaders = document.querySelectorAll('h3');
+      paperHeaders.forEach(header => {
+        if (header.textContent === 'Paper Type') {
+          header.style.display = 'block';
+        }
+      });
     }
     return container;
   }
 
+  // Helper method to add event listeners with automatic cleanup tracking
+  addEventListenerWithCleanup(element, event, handler) {
+    element.addEventListener(event, handler);
+    this.eventListeners.push({ element, event, handler });
+  }
+
+  // Clean up all event listeners
+  cleanup() {
+    this.eventListeners.forEach(({ element, event, handler }) => {
+      if (element && element.removeEventListener) {
+        element.removeEventListener(event, handler);
+      }
+    });
+    this.eventListeners = [];
+  }
+
+  // Destructor method for complete cleanup
+  destroy() {
+    this.cleanup();
+    this.sizeContainer = null;
+    this.optionsContainer = null;
+    this.paperContainer = null;
+    this.onSelectionChange = null;
+  }
+
   updateProduct(product, productKey = null) {
+    // Clean up existing event listeners before updating
+    this.cleanup();
+    
     this.currentProduct = product;
     this.currentProductKey = productKey;
     this.selectedSize = null;
     this.selectedOptions = [];
     this.selectedPaper = null;
+    
+    // Clean up any existing paper UI for external products
+    if (this.currentProduct && this.currentProduct.isExternal) {
+      this.hideExistingPaperUI();
+    }
+    
+    // Refresh paper container based on product type
+    this.paperContainer = this.findOrCreatePaperContainer();
+    
     this.renderSizes();
     this.renderOptions();
     this.renderPapers();
@@ -131,7 +203,7 @@ export class SizeSelector {
       </div>
     `;
     
-    card.addEventListener('click', () => this.selectSize(key, size));
+    this.addEventListenerWithCleanup(card, 'click', () => this.selectSize(key, size));
     
     return card;
   }
@@ -148,7 +220,7 @@ export class SizeSelector {
       </div>
     `;
     
-    card.addEventListener('click', () => this.selectSize(key, size));
+    this.addEventListenerWithCleanup(card, 'click', () => this.selectSize(key, size));
     
     return card;
   }
@@ -201,8 +273,15 @@ export class SizeSelector {
   }
 
   renderPapers() {
-    if (!this.currentProduct || !this.currentProductKey) {
-      this.paperContainer.innerHTML = '<p>No product selected</p>';
+    // Skip paper rendering entirely for external products
+    if (this.currentProduct && this.currentProduct.isExternal) {
+      return;
+    }
+    
+    if (!this.currentProduct || !this.currentProductKey || !this.paperContainer) {
+      if (this.paperContainer) {
+        this.paperContainer.innerHTML = '<p>No product selected</p>';
+      }
       return;
     }
 
@@ -222,6 +301,9 @@ export class SizeSelector {
   }
 
   renderPaperSelector() {
+    if (!this.paperContainer) {
+      return;
+    }
     this.paperContainer.innerHTML = '';
     
     // Create step indicator
@@ -272,7 +354,7 @@ export class SizeSelector {
     
     const backBtn = indicator.querySelector('.back-step-btn');
     if (backBtn) {
-      backBtn.addEventListener('click', () => this.goBackStep());
+      this.addEventListenerWithCleanup(backBtn, 'click', () => this.goBackStep());
     }
     
     return indicator;
@@ -322,7 +404,7 @@ export class SizeSelector {
     const changeBtn = document.createElement('button');
     changeBtn.className = 'change-paper-btn';
     changeBtn.textContent = 'Change Paper';
-    changeBtn.addEventListener('click', () => {
+    this.addEventListenerWithCleanup(changeBtn, 'click', () => {
       this.paperSelectionStep = 1;
       this.selectedPaperType = null;
       this.selectedWeight = null;
@@ -341,7 +423,7 @@ export class SizeSelector {
       <div class="selection-description">${defaultPaper.displayName}</div>
     `;
     
-    card.addEventListener('click', () => this.selectRecommendedPaper(defaultPaper));
+    this.addEventListenerWithCleanup(card, 'click', () => this.selectRecommendedPaper(defaultPaper));
     
     return card;
   }
@@ -355,7 +437,7 @@ export class SizeSelector {
       <div class="selection-description">${type.description}</div>
     `;
     
-    card.addEventListener('click', () => this.selectPaperType(type.key));
+    this.addEventListenerWithCleanup(card, 'click', () => this.selectPaperType(type.key));
     
     return card;
   }
@@ -369,7 +451,7 @@ export class SizeSelector {
       <div class="selection-description">Paper weight</div>
     `;
     
-    card.addEventListener('click', () => this.selectWeight(weight));
+    this.addEventListenerWithCleanup(card, 'click', () => this.selectWeight(weight));
     
     return card;
   }
@@ -387,7 +469,7 @@ export class SizeSelector {
       <div class="selection-description">${description}</div>
     `;
     
-    card.addEventListener('click', () => this.selectFinish(finish));
+    this.addEventListenerWithCleanup(card, 'click', () => this.selectFinish(finish));
     
     return card;
   }
@@ -502,7 +584,7 @@ export class SizeSelector {
     `;
     
     const checkbox = card.querySelector('.option-input');
-    checkbox.addEventListener('change', () => this.toggleOption(key, option, checkbox.checked));
+    this.addEventListenerWithCleanup(checkbox, 'change', () => this.toggleOption(key, option, checkbox.checked));
     
     return card;
   }
@@ -556,6 +638,11 @@ export class SizeSelector {
   }
 
   autoSelectDefaultPaper() {
+    // Skip auto-selection for external products
+    if (this.currentProduct && this.currentProduct.isExternal) {
+      return;
+    }
+    
     // Auto-select default paper for this product
     if (this.currentProductKey) {
       const defaultPaper = getDefaultPaper(this.currentProductKey);
@@ -575,6 +662,9 @@ export class SizeSelector {
   }
 
   reset() {
+    // Clean up event listeners first
+    this.cleanup();
+    
     // Reset size selection
     const selectedSizeCard = this.sizeContainer.querySelector('.size-card.selected');
     if (selectedSizeCard) {
@@ -632,6 +722,36 @@ export class SizeSelector {
       
       // Trigger change to update pricing
       this.triggerChange();
+    }
+    
+    // Auto-select scoring for brochures (default finishing)
+    if (this.currentProductKey === 'brochures' && this.currentProduct && this.currentProduct.finishingOptions) {
+      // Find the scoring option (now index 0 in the finishingOptions array)
+      const scoringOption = this.currentProduct.finishingOptions.find(option => 
+        option.name.toLowerCase().includes('scoring')
+      );
+      
+      if (scoringOption) {
+        const scoringIndex = this.currentProduct.finishingOptions.indexOf(scoringOption);
+        const optionKey = `finishing_${scoringIndex}`;
+        
+        // Add scoring to selected options if not already present
+        const isAlreadySelected = this.selectedOptions.some(opt => opt.key === optionKey);
+        if (!isAlreadySelected) {
+          this.selectedOptions.push({ key: optionKey, ...scoringOption });
+          
+          // Update the UI checkbox if it exists
+          setTimeout(() => {
+            const checkbox = this.optionsContainer.querySelector(`#option-${optionKey}`);
+            if (checkbox) {
+              checkbox.checked = true;
+            }
+          }, 150);
+          
+          // Trigger change to update pricing
+          this.triggerChange();
+        }
+      }
     }
   }
 }

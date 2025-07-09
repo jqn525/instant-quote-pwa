@@ -7,6 +7,9 @@ export class CartDisplay {
     this.pricingEngine = pricingEngine;
     this.isVisible = false;
     
+    // Event listener storage for cleanup
+    this.eventListeners = [];
+    
     this.init();
   }
 
@@ -189,9 +192,8 @@ export class CartDisplay {
   generateQuote() {
     const quoteData = this.cartService.generateQuoteData();
     
-    // For now, show the quote data in console
+    // Quote data is ready for processing
     // This could be expanded to generate a PDF or display in a modal
-    console.log('Quote Data:', quoteData);
     
     // Show a simple alert with quote summary
     const summary = `

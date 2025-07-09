@@ -5,12 +5,99 @@ export class SettingsPanel {
     this.isVisible = false;
     this.activeTab = 'overview';
     
+    // Event listener storage for cleanup
+    this.eventListeners = [];
+    
     this.init();
   }
 
   init() {
     this.render();
     this.setupEventListeners();
+  }
+
+  // Helper method to add event listeners with automatic cleanup tracking
+  addEventListenerWithCleanup(element, event, handler) {
+    element.addEventListener(event, handler);
+    this.eventListeners.push({ element, event, handler });
+  }
+
+  // Clean up all event listeners
+  cleanup() {
+    this.eventListeners.forEach(({ element, event, handler }) => {
+      if (element && element.removeEventListener) {
+        element.removeEventListener(event, handler);
+      }
+    });
+    this.eventListeners = [];
+  }
+
+  // Destructor method for complete cleanup
+  destroy() {
+    this.cleanup();
+    this.container = null;
+    this.settingsService = null;
+  }
+
+  // Show modern modal dialog instead of alert/confirm
+  showModal(title, message, buttons = [{ text: 'OK', primary: true }]) {
+    return new Promise((resolve) => {
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.innerHTML = `
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>${title}</h3>
+          </div>
+          <div class="modal-body">
+            <p>${message}</p>
+          </div>
+          <div class="modal-footer">
+            ${buttons.map((btn, index) => 
+              `<button class="modal-btn ${btn.primary ? 'modal-btn-primary' : 'modal-btn-secondary'}" 
+                      data-result="${btn.result || index}">${btn.text}</button>`
+            ).join('')}
+          </div>
+        </div>
+      `;
+
+      // Add click handler
+      const clickHandler = (e) => {
+        if (e.target.classList.contains('modal-btn')) {
+          const result = e.target.dataset.result;
+          document.body.removeChild(modal);
+          resolve(result);
+        } else if (e.target.classList.contains('modal-overlay')) {
+          document.body.removeChild(modal);
+          resolve(null);
+        }
+      };
+
+      modal.addEventListener('click', clickHandler);
+      document.body.appendChild(modal);
+    });
+  }
+
+  // Show confirmation dialog
+  showConfirmation(title, message) {
+    return this.showModal(title, message, [
+      { text: 'Cancel', result: 'cancel' },
+      { text: 'Confirm', result: 'confirm', primary: true }
+    ]);
+  }
+
+  // Show success message
+  showSuccess(title, message) {
+    return this.showModal(title, message, [
+      { text: 'OK', result: 'ok', primary: true }
+    ]);
+  }
+
+  // Show error message
+  showError(title, message) {
+    return this.showModal(title, message, [
+      { text: 'OK', result: 'ok', primary: true }
+    ]);
   }
 
   render() {
@@ -401,10 +488,8 @@ export class SettingsPanel {
   }
 
   setupEventListeners() {
-    // Remove existing listeners to prevent duplicates
-    if (this.clickHandler) {
-      this.container.removeEventListener('click', this.clickHandler);
-    }
+    // Clean up existing listeners first
+    this.cleanup();
     
     // Create new click handler
     this.clickHandler = (e) => {
@@ -442,8 +527,8 @@ export class SettingsPanel {
       }
     };
     
-    // Attach new listeners
-    this.container.addEventListener('click', this.clickHandler);
+    // Attach new listeners with cleanup tracking
+    this.addEventListenerWithCleanup(this.container, 'click', this.clickHandler);
 
     // Close on backdrop click
     this.backdropHandler = (e) => {
@@ -451,7 +536,7 @@ export class SettingsPanel {
         this.hide();
       }
     };
-    this.container.addEventListener('click', this.backdropHandler);
+    this.addEventListenerWithCleanup(this.container, 'click', this.backdropHandler);
   }
 
   show() {
@@ -474,8 +559,13 @@ export class SettingsPanel {
     }
   }
 
-  resetSettings() {
-    if (confirm('Are you sure you want to reset all settings to default values? This action cannot be undone.')) {
+  async resetSettings() {
+    const result = await this.showConfirmation(
+      'Reset Settings',
+      'Are you sure you want to reset all settings to default values? This action cannot be undone.'
+    );
+    
+    if (result === 'confirm') {
       this.settingsService.resetToDefaults();
       this.refreshDisplay();
     }
@@ -520,10 +610,19 @@ export class SettingsPanel {
       const validation = this.validateInput(value, 'setupFee');
       
       if (validation.isValid) {
-        this.settingsService.updateSetting('setupFees', value, productKey);
-        this.refreshDisplay();
-        this.showSuccessFeedback(`#save-setup-fee-${productKey}`);
-        this.clearErrorMessage(`#setup-fee-${productKey}`);
+        // SettingsService now returns validation result
+        const updateResult = this.settingsService.updateSetting('setupFees', value, productKey);
+        
+        if (updateResult.success) {
+          this.refreshDisplay();
+          this.showSuccessFeedback(`#save-setup-fee-${productKey}`);
+          this.clearErrorMessage(`#setup-fee-${productKey}`);
+        } else {
+          // Handle server-side validation errors or rate limiting
+          const errorMessage = updateResult.errors.join(', ');
+          this.showErrorMessage(`#setup-fee-${productKey}`, errorMessage);
+          this.showErrorFeedback(`#save-setup-fee-${productKey}`);
+        }
       } else {
         this.showErrorMessage(`#setup-fee-${productKey}`, validation.message);
         this.showErrorFeedback(`#save-setup-fee-${productKey}`);
@@ -635,17 +734,17 @@ export class SettingsPanel {
       const file = e.target.files[0];
       if (file) {
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
           try {
             const success = this.settingsService.importSettings(e.target.result);
             if (success) {
               this.refreshDisplay();
-              alert('Settings imported successfully!');
+              await this.showSuccess('Success', 'Settings imported successfully!');
             } else {
-              alert('Failed to import settings. Please check the file format.');
+              await this.showError('Error', 'Failed to import settings. Please check the file format.');
             }
           } catch (error) {
-            alert('Failed to import settings. Invalid file format.');
+            await this.showError('Error', 'Failed to import settings. Invalid file format.');
           }
         };
         reader.readAsText(file);
@@ -654,28 +753,28 @@ export class SettingsPanel {
     input.click();
   }
 
-  loadSettingsFile() {
+  async loadSettingsFile() {
     const fileInput = this.container.querySelector('#settings-file-input');
     if (fileInput && fileInput.files.length > 0) {
       const file = fileInput.files[0];
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const success = this.settingsService.importSettings(e.target.result);
           if (success) {
             this.refreshDisplay();
-            alert('Settings loaded successfully!');
+            await this.showSuccess('Success', 'Settings loaded successfully!');
             fileInput.value = ''; // Clear the input
           } else {
-            alert('Failed to load settings. Please check the file format.');
+            await this.showError('Error', 'Failed to load settings. Please check the file format.');
           }
         } catch (error) {
-          alert('Failed to load settings. Invalid file format.');
+          await this.showError('Error', 'Failed to load settings. Invalid file format.');
         }
       };
       reader.readAsText(file);
     } else {
-      alert('Please select a settings file first.');
+      await this.showError('Error', 'Please select a settings file first.');
     }
   }
 

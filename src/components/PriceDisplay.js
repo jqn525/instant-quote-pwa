@@ -1,10 +1,11 @@
 import { createSvgIcon } from './SvgIcons.js';
 
 export class PriceDisplay {
-  constructor(container, pricingEngine, cartService = null) {
+  constructor(container, pricingEngine, cartService = null, settingsService = null) {
     this.container = container;
     this.pricingEngine = pricingEngine;
     this.cartService = cartService;
+    this.settingsService = settingsService;
     this.unitPriceElement = container.querySelector('#unit-price');
     this.totalPriceElement = container.querySelector('#total-price');
     this.currentPricing = null;
@@ -13,6 +14,9 @@ export class PriceDisplay {
     this.currentOptions = null;
     this.currentQuantity = null;
     this.currentPaper = null;
+    
+    // Event listener storage for cleanup
+    this.eventListeners = [];
     
     this.init();
   }
@@ -32,6 +36,63 @@ export class PriceDisplay {
       // Add "Add to Cart" button if cart service is available
       this.addCartButton();
     }
+    
+    // Listen for settings changes to update formula breakdown
+    if (this.settingsService && this.settingsService.addEventListener) {
+      const settingsChangeHandler = async () => {
+        console.log('🔄 PriceDisplay: Settings changed event received');
+        
+        // Force complete recalculation with fresh settings instead of just updating breakdown
+        if (this.currentProduct && this.currentQuantity) {
+          console.log('🔄 PriceDisplay: Triggering full recalculation due to settings change');
+          await this.updatePricing(
+            this.currentProduct,
+            this.currentSize, 
+            this.currentOptions,
+            this.currentQuantity,
+            this.currentPaper
+          );
+        } else if (this.currentPricing) {
+          // Fallback: just update breakdown if no full context available
+          console.log('🔄 PriceDisplay: Updating breakdown only (limited context)');
+          this.updateBreakdown();
+        }
+      };
+      
+      this.settingsService.addEventListener('settingsChanged', settingsChangeHandler);
+      this.eventListeners.push({
+        element: this.settingsService,
+        event: 'settingsChanged',
+        handler: settingsChangeHandler
+      });
+    }
+  }
+
+  // Helper method to add event listeners with automatic cleanup tracking
+  addEventListenerWithCleanup(element, event, handler) {
+    if (element && element.addEventListener) {
+      element.addEventListener(event, handler);
+      this.eventListeners.push({ element, event, handler });
+    }
+  }
+
+  // Clean up all event listeners
+  cleanup() {
+    this.eventListeners.forEach(({ element, event, handler }) => {
+      if (element && element.removeEventListener) {
+        element.removeEventListener(event, handler);
+      }
+    });
+    this.eventListeners = [];
+  }
+
+  // Destructor method for complete cleanup
+  destroy() {
+    this.cleanup();
+    this.container = null;
+    this.pricingEngine = null;
+    this.cartService = null;
+    this.settingsService = null;
   }
 
   addCartButton() {
@@ -78,14 +139,14 @@ export class PriceDisplay {
     }, 1500);
   }
 
-  updatePricing(product, size, options, quantity, paper = null) {
+  async updatePricing(product, size, options, quantity, paper = null) {
     if (!product || !quantity || quantity <= 0) {
       this.reset();
       return;
     }
 
     try {
-      this.currentPricing = this.pricingEngine.calculatePrice(product, size, options, quantity, paper);
+      this.currentPricing = await this.pricingEngine.calculatePrice(product, size, options, quantity, paper);
       this.currentProduct = product;
       this.currentSize = size;
       this.currentOptions = options;
@@ -159,8 +220,45 @@ export class PriceDisplay {
     const breakdown = this.currentPricing.breakdown;
     const Q = this.currentQuantity;
     const paperCost = this.currentPaper ? this.currentPaper.costPerSheet : 0;
-    const clickCost = 0.10; // From CLICK_COST constant
     const imposition = this.currentSize && this.currentSize.imposition ? this.currentSize.imposition : 1;
+    
+    // Get current effective settings (either from settingsService or fallback)
+    const effectiveSettings = this.pricingEngine.getEffectiveSettings();
+    
+    // DEBUG: Log the settings values being used
+    console.log('🔍 PriceDisplay.updateBreakdown() - Debug Info:', {
+      productKey: this.currentProduct ? this.currentProduct.key : 'none',
+      effectiveSettings: effectiveSettings,
+      hasSettingsService: !!this.settingsService,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Get dynamic values from current settings
+    const currentClickCost = effectiveSettings.clickCost || 0.10;
+    
+    // Get current production rate for this product
+    const productKey = this.currentProduct ? this.currentProduct.key : 'default';
+    const currentProductionRate = (effectiveSettings.productionRates && effectiveSettings.productionRates[productKey]) 
+      ? effectiveSettings.productionRates[productKey] 
+      : (this.currentProduct && this.currentProduct.pricing && this.currentProduct.pricing.overhead ? this.currentProduct.pricing.overhead.k : 1.50);
+    
+    // Get current volume exponent for this product
+    const currentVolumeExponent = (effectiveSettings.volumeExponents && effectiveSettings.volumeExponents[productKey]) 
+      ? effectiveSettings.volumeExponents[productKey] 
+      : (this.currentProduct && this.currentProduct.pricing && this.currentProduct.pricing.overhead ? this.currentProduct.pricing.overhead.e : 0.75);
+    
+    // DEBUG: Log the final values being displayed
+    console.log('📊 Formula Values Used:', {
+      productKey,
+      currentClickCost,
+      currentProductionRate,
+      currentVolumeExponent,
+      fromSettings: {
+        clickCost: effectiveSettings.clickCost,
+        productionRate: effectiveSettings.productionRates ? effectiveSettings.productionRates[productKey] : 'not found',
+        volumeExponent: effectiveSettings.volumeExponents ? effectiveSettings.volumeExponents[productKey] : 'not found'
+      }
+    });
     
     breakdownElement.innerHTML = `
       <div class="formula-breakdown">
@@ -180,11 +278,11 @@ export class PriceDisplay {
           </div>
           <div class="variable-row">
             <span class="var-name">k (Production Rate):</span>
-            <span class="var-value">$1.50</span>
+            <span class="var-value">$${currentProductionRate.toFixed(2)}</span>
           </div>
           <div class="variable-row">
             <span class="var-name">e (Exponent):</span>
-            <span class="var-value">${this.currentProduct && this.currentProduct.pricing && this.currentProduct.pricing.overhead ? this.currentProduct.pricing.overhead.e : '0.75'}</span>
+            <span class="var-value">${currentVolumeExponent.toFixed(2)}</span>
           </div>
           <div class="variable-row">
             <span class="var-name">v (Variable Cost):</span>
@@ -204,7 +302,7 @@ export class PriceDisplay {
             v = (paper + clicks) × 1.5 / imposition
           </div>
           <div class="calc-step">
-            v = ($${paperCost.toFixed(3)} + $${clickCost}) × 1.5 / ${imposition} = $${breakdown.variableCostPerPiece}
+            v = ($${paperCost.toFixed(3)} + $${currentClickCost.toFixed(2)}) × 1.5 / ${imposition} = $${breakdown.variableCostPerPiece}
           </div>
           <div class="calc-step" style="font-size: 0.75rem; color: #666;">
             Debug: paper=${this.currentPaper ? 'YES' : 'NO'}, size=${this.currentSize ? 'YES' : 'NO'}, imposition=${this.currentSize ? this.currentSize.imposition : 'undefined'}
@@ -221,7 +319,7 @@ export class PriceDisplay {
             Setup: $${breakdown.setupFee}
           </div>
           <div class="calc-step">
-            Production: ${Q}<sup>0.75</sup> × $1.50 = $${breakdown.productionCost}
+            Production: ${Q}<sup>${currentVolumeExponent.toFixed(2)}</sup> × $${currentProductionRate.toFixed(2)} = $${breakdown.productionCost}
           </div>
           <div class="calc-step">
             Materials: ${Q} × $${breakdown.variableCostPerPiece} = $${breakdown.materialsCost}
@@ -313,5 +411,65 @@ export class PriceDisplay {
     
     breaksHTML += '</table></div>';
     return breaksHTML;
+  }
+
+  /**
+   * Update pricing display for external products
+   * @param {Object} pricing - External pricing result
+   */
+  updateExternalPricing(pricing) {
+    if (!pricing) {
+      this.reset();
+      return;
+    }
+
+    // Update basic price display
+    this.unitPriceElement.textContent = this.pricingEngine.formatPrice(pricing.unitPrice);
+    this.totalPriceElement.textContent = this.pricingEngine.formatPrice(pricing.total);
+
+    // Store current pricing for cart functionality
+    this.currentPricing = pricing;
+
+    // Update breakdown display if it exists
+    this.updateExternalBreakdown(pricing);
+  }
+
+  /**
+   * Update breakdown display for external products
+   * @param {Object} pricing - External pricing result
+   */
+  updateExternalBreakdown(pricing) {
+    const breakdownElement = this.container.querySelector('#price-breakdown');
+    if (!breakdownElement) return;
+
+    const breakdown = pricing.breakdown;
+    
+    breakdownElement.innerHTML = `
+      <div class="breakdown-section">
+        <h4>External Product Pricing</h4>
+        <div class="breakdown-item">
+          <span class="label">Supplier Cost:</span>
+          <span class="value">${this.pricingEngine.formatPrice(breakdown.supplierCost)}</span>
+        </div>
+        <div class="breakdown-item">
+          <span class="label">Markup (${((breakdown.markup - 1) * 100).toFixed(0)}%):</span>
+          <span class="value">${this.pricingEngine.formatPrice(breakdown.customerPrice - breakdown.supplierCost)}</span>
+        </div>
+        <div class="breakdown-item total">
+          <span class="label">Total:</span>
+          <span class="value">${this.pricingEngine.formatPrice(breakdown.customerPrice)}</span>
+        </div>
+        ${breakdown.quantityAdjusted ? `
+          <div class="breakdown-note">
+            <small>Quantity adjusted from ${breakdown.originalQuantity} to ${breakdown.validatedQuantity} (minimum/increment requirement)</small>
+          </div>
+        ` : ''}
+        ${breakdown.minimumApplied ? `
+          <div class="breakdown-note">
+            <small>Minimum order quantity applied</small>
+          </div>
+        ` : ''}
+      </div>
+    `;
   }
 }

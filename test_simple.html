@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border: 1px solid #ccc; }
+        .success { border-color: green; background-color: #f0f8f0; }
+        .error { border-color: red; background-color: #f8f0f0; }
+        #product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .product-category { margin: 20px 0; }
+        .category-title { font-size: 1.2em; margin-bottom: 10px; }
+        .category-products { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .product-card { padding: 20px; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; }
+        .external-product { border-left: 4px solid orange; }
+        .product-name { margin: 0 0 10px 0; }
+        .product-description { color: #666; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <h1>Simple Product Test</h1>
+    <div id="status">Loading...</div>
+    <div id="product-grid"></div>
+
+    <script type="module">
+        try {
+            // Import everything we need
+            const { productTypes } = await import('./src/data/products.js');
+            const { externalProducts, getAllCategories } = await import('./src/data/externalProducts.js');
+            const { createSvgIcon } = await import('./src/components/SvgIcons.js');
+            
+            document.getElementById('status').innerHTML = '<div class="test-result success">All imports successful!</div>';
+            
+            console.log('Internal products:', Object.keys(productTypes));
+            console.log('External products:', Object.keys(externalProducts));
+            
+            const container = document.getElementById('product-grid');
+            const categories = getAllCategories();
+            
+            categories.forEach(category => {
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'product-category';
+                categoryDiv.innerHTML = `
+                    <h3 class="category-title">${category.name}</h3>
+                    <p>${category.description}</p>
+                    <div class="category-products"></div>
+                `;
+                
+                const productsDiv = categoryDiv.querySelector('.category-products');
+                
+                if (category.key === 'inhouse') {
+                    Object.entries(productTypes).forEach(([key, product]) => {
+                        const productCard = document.createElement('div');
+                        productCard.className = 'product-card';
+                        productCard.innerHTML = `
+                            <h4 class="product-name">${product.name}</h4>
+                            <p class="product-description">${product.description}</p>
+                            <small>Internal Product</small>
+                        `;
+                        productsDiv.appendChild(productCard);
+                    });
+                } else if (category.key === 'external') {
+                    Object.entries(externalProducts).forEach(([key, product]) => {
+                        const productCard = document.createElement('div');
+                        productCard.className = 'product-card external-product';
+                        
+                        // Get icon for external product
+                        let icon = '';
+                        if (key === 'magnets') {
+                            icon = createSvgIcon('magnet');
+                        }
+                        
+                        productCard.innerHTML = `
+                            <div class="product-icon">${icon}</div>
+                            <h4 class="product-name">${product.name}</h4>
+                            <p class="product-description">${product.description}</p>
+                            <small>External Product - Min ${product.pricing.minQuantity} qty</small>
+                        `;
+                        productsDiv.appendChild(productCard);
+                    });
+                }
+                
+                container.appendChild(categoryDiv);
+            });
+            
+        } catch (error) {
+            document.getElementById('status').innerHTML = `<div class="test-result error">Error: ${error.message}</div>`;
+            console.error('Error:', error);
+        }
+    </script>
+</body>
+</html>

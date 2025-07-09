@@ -3,14 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Instant Quote - Print Shop Calculator</title>
+    <title>Document Solutions - Print Shop Calculator</title>
     <meta name="description" content="Quick pricing calculator for print shop customer service">
     <meta name="theme-color" content="#2563eb">
-    <link rel="manifest" href="/manifest.json">
-    <link rel="icon" type="image/svg+xml" href="/icons/icon-192x192.png">
-  <script type="module" crossorigin src="/assets/index-CmALD3YH.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-DW9_N3Ck.css">
-<link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="icons/icon-192x192.png">
+<link rel="manifest" href="manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" type="module" src="registerSW.js"></script></head>
 <body>
     <div id="app">
         <header class="app-header">
@@ -19,7 +17,7 @@
                     <!-- Hamburger menu will be loaded here -->
                 </div>
                 <div class="header-text">
-                    <h1>Instant Quote</h1>
+                    <h1>Document Solutions</h1>
                     <p>Print Shop Pricing Calculator</p>
                 </div>
                 <div id="cart-container" class="cart-container">
@@ -83,7 +81,12 @@
         <div id="settings-panel-container" class="settings-panel-container">
             <!-- Settings panel will be loaded here -->
         </div>
+        
+        <div id="version-tag-container" class="version-tag-container">
+            <!-- Version tag will be loaded here -->
+        </div>
     </div>
     
+    <script type="module" src="/src/app.js"></script>
 </body>
 </html>

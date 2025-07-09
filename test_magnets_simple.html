@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magnets Test - Simple</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .product-card { border: 1px solid #ccc; padding: 10px; margin: 5px; display: inline-block; }
+        .debug { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Magnets Visibility Test</h1>
+    
+    <div class="debug">
+        <h3>Debug Output:</h3>
+        <pre id="debug-output"></pre>
+    </div>
+    
+    <div id="product-grid"></div>
+    
+    <script type="module">
+        const debugOutput = document.getElementById('debug-output');
+        const productGrid = document.getElementById('product-grid');
+        
+        function log(message) {
+            debugOutput.innerHTML += message + '\n';
+            console.log(message);
+        }
+        
+        try {
+            log('1. Loading products...');
+            const { productTypes } = await import('./src/data/products.js');
+            log('2. Products loaded: ' + Object.keys(productTypes).join(', '));
+            
+            log('3. Checking magnets...');
+            if (productTypes.magnets) {
+                log('4. ✅ Magnets found: ' + productTypes.magnets.name);
+                log('5. Description: ' + productTypes.magnets.description);
+                log('6. Sizes: ' + Object.keys(productTypes.magnets.sizes).join(', '));
+            } else {
+                log('4. ❌ Magnets NOT found');
+            }
+            
+            log('7. Loading SVG icons...');
+            const { createSvgIcon } = await import('./src/components/SvgIcons.js');
+            const magnetIcon = createSvgIcon('magnet');
+            log('8. Magnet icon created: ' + (magnetIcon ? 'Yes' : 'No'));
+            
+            log('9. Creating product cards...');
+            let cardCount = 0;
+            Object.entries(productTypes).forEach(([key, product]) => {
+                cardCount++;
+                const card = document.createElement('div');
+                card.className = 'product-card';
+                card.innerHTML = `
+                    <h3>${product.name}</h3>
+                    <p>${product.description}</p>
+                    <small>Key: ${key}</small>
+                `;
+                productGrid.appendChild(card);
+                log(`   Card ${cardCount}: ${key} - ${product.name}`);
+            });
+            
+            log('10. ✅ Test complete. Cards created: ' + cardCount);
+            
+        } catch (error) {
+            log('❌ Error: ' + error.message);
+            log('Stack: ' + error.stack);
+        }
+    </script>
+</body>
+</html>
