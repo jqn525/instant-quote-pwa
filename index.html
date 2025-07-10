@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document Solutions - Print Shop Calculator</title>
+    <title>Instant Quote - Print Shop Calculator</title>
     <meta name="description" content="Quick pricing calculator for print shop customer service">
     <meta name="theme-color" content="#2563eb">
     <link rel="manifest" href="/instant-quote-pwa/assets/manifest-CRzHOLw2.json">
     <link rel="icon" type="image/svg+xml" href="/instant-quote-pwa/assets/icon-192x192-C1RPKHP7.png">
-<link rel="manifest" href="manifest.webmanifest">  <script type="module" crossorigin src="/instant-quote-pwa/assets/index-E6raIj0s.js"></script>
+  <script type="module" crossorigin src="/instant-quote-pwa/assets/index-BFFWipqx.js"></script>
   <link rel="stylesheet" crossorigin href="/instant-quote-pwa/assets/index-Tn-HXJp4.css">
 <link rel="manifest" href="/instant-quote-pwa/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/instant-quote-pwa/registerSW.js"></script></head>
 <body>
@@ -18,76 +18,63 @@
                 <div id="hamburger-menu-container" class="hamburger-menu-container">
                     <!-- Hamburger menu will be loaded here -->
                 </div>
-                <div class="header-text">
-                    <h1>Document Solutions</h1>
+                <div class="header-title">
+                    <h1>Instant Quote</h1>
                     <p>Print Shop Pricing Calculator</p>
                 </div>
-                <div id="cart-container" class="cart-container">
-                    <!-- Cart will be loaded here -->
+                <div class="header-actions">
+                    <div id="version-tag-container" class="version-tag-container">
+                        <!-- Version tag will be loaded here -->
+                    </div>
                 </div>
             </div>
         </header>
-        
+
         <main class="app-main">
-            <div id="product-selector" class="step active">
+            <!-- Step 1: Product Selection -->
+            <div id="step-product" class="step active">
                 <h2>Select Product Type</h2>
-                <div class="product-grid" id="product-grid">
-                    <!-- Products will be loaded here -->
+                <div id="product-grid" class="product-grid">
+                    <!-- Products will be dynamically loaded here -->
                 </div>
             </div>
-            
-            <div id="size-selector" class="step">
-                <div class="step-header">
-                    <button id="back-to-products" class="back-btn">← Back</button>
-                    <div class="step-title">
-                        <h2 id="product-name">Choose Size & Options</h2>
-                        <p id="product-description" class="product-description-text"></p>
-                    </div>
+
+            <!-- Step 2: Size and Paper Selection -->
+            <div id="step-size" class="step">
+                <h2 id="size-step-title">Choose Size & Options</h2>
+                <div id="size-paper-container">
+                    <!-- Size and paper selection will be loaded here -->
                 </div>
-                <div class="size-grid" id="size-grid">
-                    <!-- Sizes will be loaded here -->
+            </div>
+
+            <!-- Step 3: Quantity Selection -->
+            <div id="step-quantity" class="step">
+                <h2>Select Quantity</h2>
+                <div id="quantity-container">
+                    <!-- Quantity options will be loaded here -->
                 </div>
-                <div class="options-list" id="options-list">
-                    <!-- Options will be loaded here -->
-                </div>
-                <div id="quantity-selector" class="quantity-section">
-                    <!-- Quantity selector will be populated by QuantitySelector component -->
-                </div>
-                <div id="price-display" class="price-section">
-                    <div class="price-container">
-                        <div class="unit-price">
-                            <span class="label">Unit Price:</span>
-                            <span class="value" id="unit-price">$0.00</span>
-                        </div>
-                        <div class="total-price">
-                            <span class="label">Total:</span>
-                            <span class="value" id="total-price">$0.00</span>
-                        </div>
-                    </div>
+            </div>
+
+            <!-- Step 4: Price Display -->
+            <div id="step-price" class="step">
+                <div id="price-display-container">
+                    <!-- Price breakdown will be loaded here -->
                 </div>
             </div>
         </main>
-        
-        
-        <div id="quote-modal" class="modal">
-            <div class="modal-content">
-                <h3>Quote Details</h3>
-                <div id="quote-content"></div>
-                <div class="modal-actions">
-                    <button id="print-quote" class="btn-primary">Print</button>
-                    <button id="close-modal" class="btn-secondary">Close</button>
-                </div>
+
+        <footer class="app-footer">
+            <!-- Cart Display -->
+            <div id="cart-display-container">
+                <!-- Cart will be loaded here -->
             </div>
-        </div>
-        
+        </footer>
+
+        <!-- Settings Panel Modal -->
         <div id="settings-panel-container" class="settings-panel-container">
             <!-- Settings panel will be loaded here -->
         </div>
-        
-        <div id="version-tag-container" class="version-tag-container">
-            <!-- Version tag will be loaded here -->
-        </div>
     </div>
-    
+
 </body>
 </html>

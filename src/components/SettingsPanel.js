@@ -400,7 +400,7 @@ export class SettingsPanel {
     if (saveBtn) {
       const originalText = saveBtn.textContent;
       saveBtn.textContent = 'Saved!';
-      saveBtn.style.background = 'var(--success-color)';
+      saveBtn.style.background = '#059669';
       saveBtn.style.color = 'white';
       saveBtn.classList.add('success');
       
@@ -421,7 +421,7 @@ export class SettingsPanel {
       const originalColor = saveBtn.style.color;
       
       saveBtn.textContent = 'Error!';
-      saveBtn.style.background = 'var(--error-color)';
+      saveBtn.style.background = '#dc2626';
       saveBtn.style.color = 'white';
       
       setTimeout(() => {
